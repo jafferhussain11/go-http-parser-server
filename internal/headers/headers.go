@@ -14,6 +14,8 @@ func NewHeaders() Headers {
 
 const crlf = "\r\n"
 
+const ValidCharacters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&'*+-.^_`|~"
+
 func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 
 	idx := bytes.Index(data, []byte(crlf))
@@ -47,6 +49,14 @@ func sanitizeDataString(dataString string) (string, string, error) {
 	if strings.Contains(key, " ") {
 		return "", "", fmt.Errorf("malformed header key, no spacing b/w key and colon")
 	}
+
+	for _, c := range key {
+		fmt.Printf("%c\n", c)
+		if !strings.ContainsRune(ValidCharacters, c) {
+			return "", "", fmt.Errorf("field-name contains invalid character : %v", c)
+		}
+	}
+	key = strings.ToLower(key)
 
 	value := strings.Trim(trimmedString[colonIdx+1:], " ")
 	return key, value, nil
