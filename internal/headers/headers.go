@@ -16,7 +16,7 @@ const crlf = "\r\n"
 
 const ValidCharacters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&'*+-.^_`|~"
 
-func (h Headers) Parse(data []byte) (n int, done bool, err error) {
+func (h Headers) Parse(data []byte) (headers *Headers, n int, done bool, err error) {
 
 	idx := bytes.Index(data, []byte(crlf))
 	if idx == -1 {
@@ -33,7 +33,13 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 		return 0, false, err
 	}
 
-	h[key] = value
+	//check if key already present if yes, append to the existing string in the value
+	mapValue, ok := h[key]
+	if ok {
+		h[key] = mapValue + ", " + value
+	} else {
+		h[key] = value
+	}
 	return len(dataString) + 2, false, err
 
 }

@@ -75,4 +75,13 @@ func TestHeadersParse(t *testing.T) {
 	n, done, err = headers.Parse(data)
 	require.Error(t, err)
 	assert.False(t, done)
+
+	//Test : Valid , checks correct appending of values in headers map in case of duplicate field-values
+	headers = map[string]string{"host": "localhost:42069"}
+	data = []byte("host: localhost:42070\r\n\r\n")
+	n, done, err = headers.Parse(data)
+	require.NoError(t, err)
+	assert.Equal(t, "localhost:42069, localhost:42070", headers["host"])
+	assert.False(t, done)
+
 }
