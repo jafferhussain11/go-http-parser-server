@@ -16,7 +16,7 @@ const crlf = "\r\n"
 
 const ValidCharacters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&'*+-.^_`|~"
 
-func (h Headers) Parse(data []byte) (headers *Headers, n int, done bool, err error) {
+func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 
 	idx := bytes.Index(data, []byte(crlf))
 	if idx == -1 {
@@ -40,7 +40,7 @@ func (h Headers) Parse(data []byte) (headers *Headers, n int, done bool, err err
 	} else {
 		h[key] = value
 	}
-	return len(dataString) + 2, false, err
+	return len(dataString) + 2, false, nil
 
 }
 
@@ -57,7 +57,6 @@ func sanitizeDataString(dataString string) (string, string, error) {
 	}
 
 	for _, c := range key {
-		fmt.Printf("%c\n", c)
 		if !strings.ContainsRune(ValidCharacters, c) {
 			return "", "", fmt.Errorf("field-name contains invalid character : %v", c)
 		}

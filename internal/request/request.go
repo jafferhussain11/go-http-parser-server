@@ -4,9 +4,10 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/jafferhussain11/http-parse/internal/headers"
 	"io"
 	"strings"
+
+	"github.com/jafferhussain11/http-parse/internal/headers"
 )
 
 type Request struct {
@@ -36,7 +37,8 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	buf := make([]byte, bufferSize, bufferSize)
 	readToIndex := 0
 	req := &Request{
-		state: requestStateInitialized,
+		state:   requestStateInitialized,
+		Headers: headers.NewHeaders(),
 	}
 	for req.state != requestStateDone {
 		if readToIndex >= len(buf) {
@@ -45,6 +47,7 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 			buf = newBuf
 		}
 
+		//read from into buffer 8 bytes
 		numBytesRead, err := reader.Read(buf[readToIndex:])
 		if err != nil {
 			if errors.Is(err, io.EOF) {
@@ -62,6 +65,7 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 			return nil, err
 		}
 
+		//copy into buffer next 8 bytes
 		copy(buf, buf[numBytesParsed:])
 		readToIndex -= numBytesParsed
 	}
@@ -127,9 +131,12 @@ func (r *Request) parse(data []byte) (int, error) {
 			// something actually went wrong
 			return 0, err
 		}
+		if n == 0 {
+			// need more data, break out to read more
+			break
+		}
 		totalBytesParsed = totalBytesParsed + n
 	}
-
 	return totalBytesParsed, nil
 
 }
@@ -159,9 +166,9 @@ func (r *Request) parseSingle(data []byte) (int, error) {
 		if err != nil {
 			return 0, err
 		}
-
-		r.Headers = headers
-		r.state = requestStateDone
+		if done {
+			r.state = requestStateDone
+		}
 		return n, nil
 
 	default:
