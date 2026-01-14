@@ -16,6 +16,15 @@ const crlf = "\r\n"
 
 const ValidCharacters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&'*+-.^_`|~"
 
+func (h Headers) Get(key string) (string, bool) {
+	key = strings.ToLower(key)
+	mapValue, ok := h[key]
+	if !ok {
+		return "", false
+	}
+	return mapValue, true
+}
+
 func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 
 	idx := bytes.Index(data, []byte(crlf))

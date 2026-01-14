@@ -5,15 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/jafferhussain11/http-parse/internal/headers"
 )
 
 type Request struct {
-	RequestLine RequestLine
-	Headers     headers.Headers
-	state       requestState
+	RequestLine    RequestLine
+	Headers        headers.Headers
+	Body           []byte
+	state          requestState
+	bodyLengthRead int
 }
 
 type RequestLine struct {
@@ -28,6 +31,7 @@ const (
 	requestStateInitialized requestState = iota
 	requestStateDone
 	requestStateParsingHeaders
+	requestStateParsingBody
 )
 
 const crlf = "\r\n"
@@ -39,6 +43,7 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	req := &Request{
 		state:   requestStateInitialized,
 		Headers: headers.NewHeaders(),
+		Body:    make([]byte, 0),
 	}
 	for req.state != requestStateDone {
 		if readToIndex >= len(buf) {
@@ -167,11 +172,40 @@ func (r *Request) parseSingle(data []byte) (int, error) {
 			return 0, err
 		}
 		if done {
-			r.state = requestStateDone
+			r.state = requestStateParsingBody
 		}
 		return n, nil
-
+	case requestStateParsingBody:
+		contentLenStr, ok := r.Headers.Get("Content-Length")
+		if !ok {
+			// assume that if no content-length header is present, there is no body
+			r.state = requestStateDone
+			return len(data), nil
+		}
+		n, err := r.appendDataToBody(data, contentLenStr)
+		if err != nil {
+			return 0, err
+		}
+		return n, nil
 	default:
 		return 0, fmt.Errorf("unknown state")
 	}
+}
+
+func (r *Request) appendDataToBody(data []byte, contentLengthStr string) (n int, err error) {
+	conLen, err := strconv.Atoi(contentLengthStr)
+	if err != nil {
+		return 0, err
+	}
+	r.Body = append(r.Body, data...)
+	r.bodyLengthRead += len(data)
+
+	if r.bodyLengthRead > conLen {
+		return 0, fmt.Errorf("body greater than actual content-length specified in header")
+	}
+
+	if r.bodyLengthRead == conLen {
+		r.state = requestStateDone
+	}
+	return len(data), nil
 }
