@@ -26,6 +26,7 @@ func Serve(port int) (*Server, error) {
 	}
 	server.isClosed.Store(false)
 
+	//this frees the main goroutine
 	go server.listen()
 
 	return server, nil
@@ -49,6 +50,7 @@ func (s *Server) listen() {
 			log.Fatal(err)
 		}
 
+		//this frees the listening goroutine
 		go func(c net.Conn) {
 			s.handle(c)
 			c.Close()
@@ -58,6 +60,7 @@ func (s *Server) listen() {
 }
 
 func (s *Server) handle(conn net.Conn) {
-	fmt.Printf("HTTP/1.1 200 OK\nContent-Type: text/plain\nContent-Length: 13\n\nHello World!")
+	//write to stream, not console ! like fmt.Printf
+	fmt.Fprintf(conn, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 12\r\n\r\nHello World!")
 	conn.Close()
 }

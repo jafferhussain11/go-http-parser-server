@@ -59,7 +59,7 @@ func sanitizeDataString(dataString string) (string, string, error) {
 	//get first idx of colon
 	colonIdx := strings.Index(trimmedString, ":")
 
-	//remove ws b/w key and colon
+	//remove wspace b/w key and colon
 	key := strings.TrimPrefix(trimmedString[:colonIdx], " ")
 	if strings.Contains(key, " ") {
 		return "", "", fmt.Errorf("malformed header key, no spacing b/w key and colon")
