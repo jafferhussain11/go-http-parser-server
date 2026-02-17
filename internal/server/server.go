@@ -6,6 +6,8 @@ import (
 	"net"
 	"strconv"
 	"sync/atomic"
+
+	"github.com/jafferhussain11/http-parse/internal/response"
 )
 
 type Server struct {
@@ -61,6 +63,18 @@ func (s *Server) listen() {
 
 func (s *Server) handle(conn net.Conn) {
 	//write to stream, not console ! like fmt.Printf
-	fmt.Fprintf(conn, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 12\r\n\r\nHello World!")
+
+	h := response.GetDefaultHeaders(0)
+
+	err := response.WriteStatusLine(conn, 200)
+	if err != nil {
+		log.Fatalf("error sending response: %s\n", err.Error())
+	}
+
+	err = response.WriteHeaders(conn, h)
+	if err != nil {
+		log.Fatalf("error sending headers: %s\n", err.Error())
+	}
+	fmt.Fprintf(conn, "\r\n")
 	conn.Close()
 }
