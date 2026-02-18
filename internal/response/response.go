@@ -11,17 +11,82 @@ import (
 type StatusCode int
 
 const (
-	statusOk                  StatusCode = 200
-	statusBadRequest          StatusCode = 400
-	statusUnauthorized        StatusCode = 401
-	statusNotFound            StatusCode = 404
-	statusInternalServerError StatusCode = 500
+	StatusOk                  StatusCode = 200
+	StatusBadRequest          StatusCode = 400
+	StatusUnauthorized        StatusCode = 401
+	StatusNotFound            StatusCode = 404
+	StatusInternalServerError StatusCode = 500
 )
 
-//type Response struct {
-//	statusLine string
-//	headers    map[string]string
-//}
+type WriterState int
+
+const (
+	writerStateStatusLine WriterState = iota // 0 - waiting for status line
+	writerStateHeaders                       // 1 - status line done, waiting for headers
+	writerStateBody                          // 2 - headers done, waiting for body
+)
+
+type Writer struct {
+	ioWriter    io.Writer
+	writerState WriterState
+}
+
+func NewWriter(w io.Writer) *Writer {
+	return &Writer{
+		ioWriter:    w,
+		writerState: writerStateStatusLine,
+	}
+}
+
+func (w *Writer) WriteStatusLine(statusCode StatusCode) error {
+	if w.writerState != writerStateStatusLine {
+		return fmt.Errorf("You are not allowed to write statusLine while on current writer state")
+	}
+
+	err := writeStatusLine(w.ioWriter, statusCode)
+	if err != nil {
+		return err
+	}
+	w.writerState = writerStateHeaders
+	return nil
+}
+
+// if user changes existing key overwrite exisitng value
+// if user adds extra keys append those
+// check non empty and
+func (w *Writer) WriteHeaders(headers headers.Headers) error {
+	if w.writerState != writerStateHeaders {
+		return fmt.Errorf("You are not allowed to write statusLine while on current writer state")
+
+	}
+
+	//check all headers or overwrite
+	defHeaders := GetDefaultHeaders(0)
+	for k, v := range defHeaders {
+		_, ok := headers[k]
+		if !ok {
+			//return fmt.Errorf("You are missing a required header: %s", k)
+			headers[k] = v
+		}
+	}
+
+	//write whatever headers user passed
+	err := writeHeaders(w.ioWriter, headers)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(w.ioWriter, "\r\n")
+	w.writerState = writerStateBody
+	return nil
+
+}
+
+func (w *Writer) WriteBody(p []byte) (int, error) {
+	if w.writerState != writerStateBody {
+		return 0, fmt.Errorf("cannot write body in current state")
+	}
+	return w.ioWriter.Write(p)
+}
 
 func GetDefaultHeaders(contentLen int) headers.Headers {
 	h := headers.NewHeaders()
@@ -31,19 +96,19 @@ func GetDefaultHeaders(contentLen int) headers.Headers {
 	return h
 }
 
-func WriteStatusLine(w io.Writer, statusCode StatusCode) error {
+func writeStatusLine(w io.Writer, statusCode StatusCode) error {
 	var statusLine string
 
 	switch statusCode {
-	case statusOk:
+	case StatusOk:
 		statusLine = "HTTP/1.1 200 OK"
-	case statusBadRequest:
+	case StatusBadRequest:
 		statusLine = "HTTP/1.1 400 Bad Request"
-	case statusUnauthorized:
+	case StatusUnauthorized:
 		statusLine = "HTTP/1.1 401 Unauthorized"
-	case statusNotFound:
+	case StatusNotFound:
 		statusLine = "HTTP/1.1 404 Not Found"
-	case statusInternalServerError:
+	case StatusInternalServerError:
 		statusLine = "HTTP/1.1 500 Internal Server Error"
 	default:
 		return fmt.Errorf("unsupported status code: %d", statusCode)
@@ -54,7 +119,7 @@ func WriteStatusLine(w io.Writer, statusCode StatusCode) error {
 	return err
 }
 
-func WriteHeaders(w io.Writer, headers headers.Headers) error {
+func writeHeaders(w io.Writer, headers headers.Headers) error {
 	for k, v := range headers {
 		_, err := fmt.Fprintf(w, "%s: %s\r\n", k, v)
 		if err != nil {

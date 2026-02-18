@@ -1,21 +1,29 @@
 package server
 
 import (
-	"fmt"
 	"log"
 	"net"
 	"strconv"
 	"sync/atomic"
 
+	"github.com/jafferhussain11/http-parse/internal/request"
 	"github.com/jafferhussain11/http-parse/internal/response"
 )
 
 type Server struct {
 	isClosed atomic.Bool
 	Listener net.Listener
+	handler  Handler
 }
 
-func Serve(port int) (*Server, error) {
+type Handler func(w *response.Writer, req *request.Request)
+
+type HandlerError struct {
+	StatusCode response.StatusCode
+	Msg        string
+}
+
+func Serve(port int, handler Handler) (*Server, error) {
 	portString := ":" + strconv.Itoa(port)
 
 	l, err := net.Listen("tcp", portString)
@@ -25,6 +33,7 @@ func Serve(port int) (*Server, error) {
 
 	server := &Server{
 		Listener: l,
+		handler:  handler,
 	}
 	server.isClosed.Store(false)
 
@@ -62,19 +71,14 @@ func (s *Server) listen() {
 }
 
 func (s *Server) handle(conn net.Conn) {
-	//write to stream, not console ! like fmt.Printf
 
-	h := response.GetDefaultHeaders(0)
-
-	err := response.WriteStatusLine(conn, 200)
+	req, err := request.RequestFromReader(conn)
 	if err != nil {
-		log.Fatalf("error sending response: %s\n", err.Error())
+		w := response.NewWriter(conn)
+		w.WriteStatusLine(response.StatusBadRequest)
+		return
 	}
 
-	err = response.WriteHeaders(conn, h)
-	if err != nil {
-		log.Fatalf("error sending headers: %s\n", err.Error())
-	}
-	fmt.Fprintf(conn, "\r\n")
-	conn.Close()
+	w := response.NewWriter(conn)
+	s.handler(w, req)
 }
