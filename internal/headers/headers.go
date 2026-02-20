@@ -53,6 +53,16 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 
 }
 
+func (h Headers) Override(k string, v string) {
+	k = strings.ToLower(k)
+	h[k] = v
+}
+
+func (h Headers) Delete(k string) {
+	k = strings.ToLower(k)
+	delete(h, k)
+}
+
 func sanitizeDataString(dataString string) (string, string, error) {
 
 	trimmedString := strings.Trim(dataString, " ")

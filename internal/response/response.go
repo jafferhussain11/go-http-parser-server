@@ -23,7 +23,8 @@ type WriterState int
 const (
 	writerStateStatusLine WriterState = iota // 0 - waiting for status line
 	writerStateHeaders                       // 1 - status line done, waiting for headers
-	writerStateBody                          // 2 - headers done, waiting for body
+	writerStateBody
+	// 2 - headers done, waiting for body
 )
 
 type Writer struct {
@@ -60,17 +61,6 @@ func (w *Writer) WriteHeaders(headers headers.Headers) error {
 
 	}
 
-	//check all headers or overwrite
-	defHeaders := GetDefaultHeaders(0)
-	for k, v := range defHeaders {
-		_, ok := headers[k]
-		if !ok {
-			//return fmt.Errorf("You are missing a required header: %s", k)
-			headers[k] = v
-		}
-	}
-
-	//write whatever headers user passed
 	err := writeHeaders(w.ioWriter, headers)
 	if err != nil {
 		return err
@@ -88,11 +78,46 @@ func (w *Writer) WriteBody(p []byte) (int, error) {
 	return w.ioWriter.Write(p)
 }
 
+func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
+	lenInHex := fmt.Sprintf("%x", len(p))
+	n, err := w.ioWriter.Write([]byte(lenInHex))
+	if err != nil {
+		return 0, err
+	}
+	n, err = w.ioWriter.Write([]byte("\r\n"))
+	if err != nil {
+		return 0, err
+	}
+
+	n, err = w.WriteBody(p)
+	if err != nil {
+		return 0, err
+	}
+	w.ioWriter.Write([]byte("\r\n"))
+
+	return n, nil
+
+}
+
+func (w *Writer) WriteChunkedBodyDone() (int, error) {
+	//write 0 /r/n
+	if w.writerState != writerStateBody {
+		return 0, fmt.Errorf("cannot write body in current state")
+	}
+
+	n, err := w.ioWriter.Write([]byte("0\r\n\r\n"))
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
+
+}
+
 func GetDefaultHeaders(contentLen int) headers.Headers {
 	h := headers.NewHeaders()
-	h["Content-Type"] = "text/plain"
-	h["Connection"] = "close"
-	h["Content-Length"] = strconv.Itoa(contentLen)
+	h["content-type"] = "text/plain"
+	h["connection"] = "close"
+	h["content-length"] = strconv.Itoa(contentLen)
 	return h
 }
 
