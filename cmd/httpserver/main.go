@@ -1,7 +1,9 @@
 package main
 
 import (
+	"crypto/sha256"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -9,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/jafferhussain11/http-parse/internal/headers"
 	"github.com/jafferhussain11/http-parse/internal/request"
 	"github.com/jafferhussain11/http-parse/internal/response"
 	"github.com/jafferhussain11/http-parse/internal/server"
@@ -35,6 +38,12 @@ func main() {
 			h.Override("Content-Type", "text/html")
 			w.WriteHeaders(h)
 			w.WriteBody(body)
+
+		} else if req.RequestLine.RequestTarget == "/httpbin/html" {
+			handleHttpbinHTML(w, req)
+
+		} else if req.RequestLine.RequestTarget == "/video" {
+			handleVideoResponse(w, req)
 
 		} else if strings.HasPrefix(req.RequestLine.RequestTarget, "/httpbin") {
 			numOfResp := strings.TrimPrefix(req.RequestLine.RequestTarget, "/httpbin/")
@@ -74,7 +83,6 @@ func main() {
 					}
 				}
 			}
-
 			w.WriteChunkedBodyDone()
 
 		} else {
@@ -87,6 +95,8 @@ func main() {
 		}
 
 	}
+
+	//Server stuff
 	server, err := server.Serve(port, handler)
 	if err != nil {
 		log.Fatalf("Error starting server: %v", err)
@@ -98,4 +108,124 @@ func main() {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
 	log.Println("Server gracefully stopped")
+}
+
+func handleVideoResponse(w *response.Writer, req *request.Request) {
+	filePtr, err := os.Open("assets/vim.mp4")
+	if err != nil {
+		w.WriteStatusLine(response.StatusInternalServerError)
+		h := response.GetDefaultHeaders(len(err.Error()))
+		w.WriteHeaders(h)
+		w.WriteBody([]byte(err.Error()))
+		return
+	}
+	defer filePtr.Close()
+
+	w.WriteStatusLine(response.StatusOk)
+	h := response.GetDefaultHeaders(0)
+	h.Delete("content-length")
+	h.Override("Transfer-Encoding", "chunked")
+	h.Override("Content-Type", "video/mp4")
+	h.Override("Trailer", "X-Content-Length")
+	w.WriteHeaders(h)
+
+	buff := make([]byte, 1024)
+	totalBytes := 0
+	for {
+		n, err := filePtr.Read(buff)
+		totalBytes += n
+		fmt.Printf("read %d bytes from file", n)
+		if n > 0 {
+			_, err := w.WriteChunkedBody(buff[:n])
+			if err != nil {
+				fmt.Println("Error writing chunked body:", err)
+				break
+			}
+		}
+		if err != nil {
+			if err == io.EOF {
+				fmt.Println("Done reading response body with no errors")
+				break
+			} else {
+				fmt.Println("Error reading contents of file", err)
+				break
+			}
+		}
+	}
+	w.WriteChunkedBodyDone()
+
+	trailers := headers.NewHeaders()
+	trailers["X-Content-Length"] = fmt.Sprintf("%d", totalBytes)
+
+	err = w.WriteTrailers(trailers)
+	if err != nil {
+		fmt.Println("Error writing chunked body:", err)
+		return
+	}
+}
+
+func handleHttpbinHTML(w *response.Writer, req *request.Request) {
+
+	resp, err := http.Get("https://httpbin.org/html")
+	if err != nil {
+		w.WriteStatusLine(response.StatusInternalServerError)
+		h := response.GetDefaultHeaders(len(err.Error()))
+		w.WriteHeaders(h)
+		w.WriteBody([]byte(err.Error()))
+		return
+	}
+	defer resp.Body.Close()
+
+	w.WriteStatusLine(response.StatusOk)
+	h := response.GetDefaultHeaders(0)
+	h.Delete("content-length")
+	h.Override("Transfer-Encoding", "chunked")
+	h.Override("Trailer", "X-Content-SHA256, X-Content-Length")
+	w.WriteHeaders(h)
+
+	buff := make([]byte, 1024)
+	totalBytes := 0
+	hasher := sha256.New()
+
+	for {
+		n, err := resp.Body.Read(buff)
+		if n > 0 {
+			fmt.Printf("read %d bytes from httpBin.org\n", n)
+			_, werr := hasher.Write(buff[:n])
+			if werr != nil {
+				fmt.Println("Error writing chunk into sha256 hasher", werr)
+				break
+			}
+			_, werr = w.WriteChunkedBody(buff[:n])
+			if werr != nil {
+				fmt.Println("Error writing chunked body:", werr)
+				break
+			}
+			totalBytes += n
+		}
+		if err != nil {
+			if err == io.EOF {
+				fmt.Println("Done reading response body with no errors")
+				break
+			} else {
+				fmt.Println("Done reading response body with errors", err)
+				break
+			}
+		}
+	}
+	w.WriteChunkedBodyDone()
+
+	//compute hash
+	shaSum := fmt.Sprintf("%x", hasher.Sum(nil))
+	trailers := headers.NewHeaders()
+
+	trailers["X-Content-SHA256"] = shaSum
+	trailers["X-Content-Length"] = fmt.Sprintf("%d", totalBytes)
+
+	err = w.WriteTrailers(trailers)
+	if err != nil {
+		fmt.Println("Error writing chunked body:", err)
+		return
+	}
+
 }

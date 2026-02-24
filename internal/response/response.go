@@ -24,6 +24,7 @@ const (
 	writerStateStatusLine WriterState = iota // 0 - waiting for status line
 	writerStateHeaders                       // 1 - status line done, waiting for headers
 	writerStateBody
+	writerStateBodyDone
 	// 2 - headers done, waiting for body
 )
 
@@ -105,11 +106,31 @@ func (w *Writer) WriteChunkedBodyDone() (int, error) {
 		return 0, fmt.Errorf("cannot write body in current state")
 	}
 
-	n, err := w.ioWriter.Write([]byte("0\r\n\r\n"))
+	n, err := w.ioWriter.Write([]byte("0\r\n"))
 	if err != nil {
 		return 0, err
 	}
+	w.writerState = writerStateBodyDone
 	return n, nil
+
+}
+
+func (w *Writer) WriteTrailers(h headers.Headers) error {
+
+	if w.writerState != writerStateBodyDone {
+		return fmt.Errorf("cannot write Trailers in the current state")
+	}
+
+	err := writeHeaders(w.ioWriter, h)
+	if err != nil {
+		return fmt.Errorf("error writing trailers : %s", err)
+	}
+
+	_, err = w.ioWriter.Write([]byte("\r\n"))
+	if err != nil {
+		return fmt.Errorf("error writing trailer ending : %s", err)
+	}
+	return nil
 
 }
 
